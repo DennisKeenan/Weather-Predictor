@@ -3,6 +3,11 @@ import numpy as np
 import seaborn as sb
 import matplotlib.pyplot as plot
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler 
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score
+import category_encoders as ce
+
 
 # Read Data
     # Read Data
@@ -47,7 +52,6 @@ data.drop("Date",axis=1,inplace=True)
 # print(pd.get_dummies(data.WindDir3pm,drop_first=True,dummy_na=True).sum(axis=0))
 # print(pd.get_dummies(data.WindDir3pm,drop_first=True,dummy_na=True).head())
 # print("-"*80)
-
 
 
 # Data Plotting
@@ -97,8 +101,6 @@ fig.set_ylabel("Rain Tommorow")
 
 
 # Find outliers for Rainfall variable
-# print(round(data[numerical].describe()),2)
-
         # Rainfall
 IQR = data.Rainfall.quantile(0.75) - data.Rainfall.quantile(0.25)
 Lower_fence = data.Rainfall.quantile(0.25) - (IQR * 3)
@@ -126,14 +128,14 @@ Lower_fence = data.WindSpeed3pm.quantile(0.25) - (IQR * 3)
 Upper_fence = data.WindSpeed3pm.quantile(0.75) + (IQR * 3)
 print('Wind Speed (3pm) outliers are values < {lowerboundary} or > {upperboundary}'
       .format(lowerboundary=Lower_fence, upperboundary=Upper_fence))
-
 # plot.show()
+
 
 # Training
 x=data.drop(["RainTomorrow"],axis=1)
 y=data["RainTomorrow"]  
 categorical=[i for i in x.columns if x[i].dtype=='O']
-X_train, X_test, y_train, y_test = train_test_split(x, y, test_size = 0.2, random_state = 0)
+X_train, X_test, Y_train, Y_test = train_test_split(x, y, test_size = 0.2, random_state = 0)
 for data1 in [X_train,X_test]:
     for col in numerical:
         col_median=X_train[col].median()
@@ -150,6 +152,41 @@ for data3 in [X_train,X_test]:
     data3["Evaporation"]=max_value(data3,"Evaporation",21.8)
     data3["WindSpeed9am"]=max_value(data3,"WindSpeed9am",55.0)
     data3["WindSpeed3pm"]=max_value(data3,"WindSpeed3pm",57.0)
-print(X_train[numerical].isnull().sum())
-print(X_train[categorical].isnull().sum())
-print(X_train.describe())
+
+
+# Encoding
+encoder=ce.BinaryEncoder(cols=["RainToday"])
+X_train=encoder.fit_transform(X_train)
+X_test=encoder.transform(X_test)
+X_train=pd.concat([X_train[numerical],X_train[["RainToday_0","RainToday_1"]],
+                  pd.get_dummies(X_train.Location),
+                  pd.get_dummies(X_train.WindGustDir),
+                  pd.get_dummies(X_train.WindDir9am),
+                  pd.get_dummies(X_train.WindDir3pm)],
+                  axis=1)
+X_test=pd.concat([X_test[numerical],X_test[["RainToday_0","RainToday_1"]],
+                  pd.get_dummies(X_test.Location),
+                  pd.get_dummies(X_test.WindGustDir),
+                  pd.get_dummies(X_test.WindDir9am),
+                  pd.get_dummies(X_test.WindDir3pm)],
+                  axis=1)
+
+
+# Scaler
+cols=X_train.columns
+scaler=MinMaxScaler()
+X_train=scaler.fit_transform(X_train)
+X_test=scaler.transform(X_test)
+X_train=pd.DataFrame(X_train,columns=cols)
+X_test=pd.DataFrame(X_test,columns=cols)
+Y_train.fillna(Y_train.mode()[0],inplace=True)
+Y_test.fillna(Y_test.mode()[0],inplace=True)
+
+
+# Model
+Logreg=LogisticRegression(solver="liblinear",random_state=0)
+Logreg.fit(X_train,Y_train)
+Y_testresult=Logreg.predict(X_test)
+print(accuracy_score(Y_test,Y_testresult))
+print(Y_test.value_counts())
+print(pd.DataFrame(Y_testresult).value_counts())
